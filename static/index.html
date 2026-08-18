@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>회의 Q&amp;A 도우미</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    background: #14161a; color: #e8eaed; height: 100vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; background: #1d2026; border-bottom: 1px solid #2c3038;
+  }
+  header h1 { font-size: 15px; font-weight: 600; }
+  #status {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: #3a3f47; color: #b8bcc4;
+  }
+  #status.ok { background: #143d2b; color: #6fdb9c; }
+  #status.err { background: #4a1f1f; color: #ff9c9c; }
+  #meter-wrap { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }
+  #device { font-size: 11px; color: #7a8294; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; max-width: 220px; }
+  #meter { width: 90px; height: 8px; background: #2c3038; border-radius: 4px; overflow: hidden; }
+  #meter-bar { height: 100%; width: 0; background: #4caf6e; transition: width 0.2s; }
+  #meter.silent #meter-bar { background: #6b4c4c; }
+  main { flex: 1; display: flex; min-height: 0; }
+  section { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  section h2 {
+    font-size: 12px; font-weight: 600; color: #9aa0a8; letter-spacing: 1px;
+    padding: 10px 16px 6px;
+  }
+  #subtitles {
+    flex: 1; overflow-y: auto; padding: 0 16px 16px; border-right: 1px solid #2c3038;
+  }
+  .bubble { margin-bottom: 14px; }
+  .bubble .en { font-size: 13px; color: #8d93a0; line-height: 1.5; }
+  .bubble .ko { font-size: 18px; color: #f1f3f5; line-height: 1.6; margin-top: 2px; }
+  #answer-panel { flex: 1.2; overflow-y: auto; padding: 0 20px 20px; }
+  .ans-block { margin-bottom: 18px; }
+  .ans-label { font-size: 12px; color: #9aa0a8; margin-bottom: 6px; letter-spacing: 1px; }
+  #ans-ko { font-size: 17px; line-height: 1.7; color: #d6d9de; }
+  #ans-en {
+    font-size: 26px; line-height: 1.6; color: #ffffff; font-weight: 600;
+    background: #1d2334; border: 1px solid #2e3a5c; border-radius: 10px; padding: 16px;
+  }
+  #ans-pron { font-size: 15px; line-height: 1.7; color: #b9a97e; }
+  /* 아직 생성되지 않은 칸: 숨기지 않고 흐린 안내 문구로 자리를 지킨다 */
+  #ans-ko.pending, #ans-en.pending, #ans-pron.pending {
+    color: #5e646e; font-size: 15px; font-weight: 400;
+  }
+  #ans-question { font-size: 13px; color: #8d93a0; line-height: 1.5; font-style: italic; }
+  #placeholder { color: #5e646e; font-size: 14px; line-height: 1.8; padding-top: 8px; }
+  footer {
+    display: flex; flex-direction: column; gap: 8px; padding: 10px 16px;
+    background: #1d2026; border-top: 1px solid #2c3038;
+  }
+  .footer-row { display: flex; gap: 10px; align-items: center; }
+  #ko-input {
+    flex: 1; font-family: inherit; font-size: 15px; color: #e8eaed;
+    background: #14161a; border: 1px solid #3a3f47; border-radius: 8px; padding: 11px 12px;
+  }
+  #ko-input:focus { outline: none; border-color: #2f6fed; }
+  #btn-translate { background: #3a3f47; color: #c8ccd4; }
+  button {
+    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    border: none; border-radius: 8px; padding: 12px 20px;
+  }
+  #btn-ask { background: #2f6fed; color: white; flex: 1; font-size: 17px; }
+  #btn-ask:disabled { background: #2a3547; color: #7a8294; cursor: wait; }
+  #btn-clear { background: #3a3f47; color: #c8ccd4; }
+  footer .hint { font-size: 12px; color: #7a8294; }
+
+  /* 노트북 화면 절반(좁은 창)에서는 위=자막 / 아래=답변 세로 배치로 전환 */
+  @media (max-width: 1100px) {
+    main { flex-direction: column; }
+    section:first-child { flex: 0 0 34%; }
+    section:last-child { flex: 1; }
+    #subtitles { border-right: none; border-bottom: 1px solid #2c3038; }
+    .bubble .en { font-size: 12px; }
+    .bubble .ko { font-size: 16px; }
+    #ans-en { font-size: 22px; padding: 12px; }
+    #ans-ko { font-size: 15px; }
+    #ans-pron { font-size: 14px; }
+    #answer-panel { padding: 0 14px 14px; }
+    footer { padding: 10px 12px; }
+    footer .hint { display: none; }
+    #btn-ask { padding: 12px 10px; font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>회의 Q&amp;A 도우미</h1>
+  <span id="status">연결 중...</span>
+  <div id="meter-wrap">
+    <span id="device">장치 확인 중...</span>
+    <div id="meter"><div id="meter-bar"></div></div>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>실시간 자막 (영어 → 한국어)</h2>
+    <div id="subtitles"></div>
+  </section>
+  <section>
+    <h2>답변</h2>
+    <div id="answer-panel">
+      <div id="placeholder">
+        질문이 끝나면 아래 <b>답변 생성</b> 버튼(또는 스페이스바)을 누르세요.<br>
+        최근 자막을 바탕으로 자료 안에서 답변을 만들어 여기에 표시합니다.
+      </div>
+      <div id="answer-content" style="display:none">
+        <div class="ans-block"><div class="ans-label">인식된 질문</div><div id="ans-question"></div></div>
+        <div class="ans-block"><div class="ans-label">한국어 답변 (내용 확인용)</div><div id="ans-ko"></div></div>
+        <div class="ans-block"><div class="ans-label">영어 답변 (이걸 읽으세요)</div><div id="ans-en"></div></div>
+        <div class="ans-block"><div class="ans-label">발음 가이드</div><div id="ans-pron"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  <div class="footer-row">
+    <input id="ko-input" placeholder="급할 때: 한글로 답변 입력 후 Enter → 영어로 번역" autocomplete="off">
+    <button id="btn-translate">번역</button>
+  </div>
+  <div class="footer-row">
+    <button id="btn-ask">답변 생성 (스페이스바)</button>
+    <button id="btn-clear">자막 지우기</button>
+    <span class="hint">질문이 끝난 직후에 누르면 가장 정확합니다</span>
+  </div>
+</footer>
+<script>
+const statusEl = document.getElementById('status');
+const subtitles = document.getElementById('subtitles');
+const btnAsk = document.getElementById('btn-ask');
+const btnClear = document.getElementById('btn-clear');
+const placeholder = document.getElementById('placeholder');
+const answerContent = document.getElementById('answer-content');
+
+let ws = null;
+let currentBubble = null;
+let lastFragmentAt = 0;
+const NEW_BUBBLE_GAP_MS = 2500; // 이 시간 이상 조용하면 새 말풍선 시작
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = cls || '';
+}
+
+function getBubble() {
+  const now = Date.now();
+  if (!currentBubble || now - lastFragmentAt > NEW_BUBBLE_GAP_MS) {
+    currentBubble = document.createElement('div');
+    currentBubble.className = 'bubble';
+    currentBubble.innerHTML = '<div class="en"></div><div class="ko"></div>';
+    subtitles.appendChild(currentBubble);
+  }
+  lastFragmentAt = now;
+  return currentBubble;
+}
+
+function appendSubtitle(kind, text) {
+  const b = getBubble();
+  b.querySelector('.' + kind).textContent += text;
+  subtitles.scrollTop = subtitles.scrollHeight;
+}
+
+// pending=true(생성 중)이면 아직 안 나온 칸을 숨기지 않고 "생성 중..."으로 남겨둔다.
+// 한국어 답변은 영어보다 늦게 생성되므로, 숨기면 "영어만 나왔다"고 오해하게 된다.
+function showAnswer(fields, pending) {
+  placeholder.style.display = 'none';
+  answerContent.style.display = 'block';
+  for (const [id, value] of Object.entries(fields)) {
+    const el = document.getElementById(id);
+    const waiting = pending && !value && id !== 'ans-question';
+    el.textContent = waiting ? '생성 중...' : (value || '');
+    el.classList.toggle('pending', waiting);
+    el.parentElement.style.display = (waiting || value) ? 'block' : 'none';
+  }
+  document.getElementById('answer-panel').scrollTop = 0;
+}
+
+function handleEvent(ev) {
+  if (ev.type === 'level') {
+    const bar = document.getElementById('meter-bar');
+    const meter = document.getElementById('meter');
+    bar.style.width = Math.round(ev.value * 100) + '%';
+    meter.classList.toggle('silent', ev.value < 0.01);
+    if (ev.device) document.getElementById('device').textContent = ev.device;
+    return;
+  }
+  if (ev.type === 'source') appendSubtitle('en', ev.text);
+  else if (ev.type === 'translation') appendSubtitle('ko', ev.text);
+  else if (ev.type === 'status') {
+    setStatus(ev.text, ev.text.includes('듣는 중') ? 'ok' : '');
+  } else if (ev.type === 'answer_pending') {
+    btnAsk.disabled = true;
+    btnAsk.textContent = '답변 생성 중...';
+    showAnswer({ 'ans-question': ev.question, 'ans-ko': '', 'ans-en': '', 'ans-pron': '' }, true);
+  } else if (ev.type === 'answer_partial') {
+    showAnswer({ 'ans-question': document.getElementById('ans-question').textContent,
+                 'ans-ko': ev.ko, 'ans-en': ev.en, 'ans-pron': ev.pron }, true);
+  } else if (ev.type === 'answer') {
+    btnAsk.disabled = false;
+    btnAsk.textContent = '답변 생성 (스페이스바)';
+    showAnswer({ 'ans-question': document.getElementById('ans-question').textContent,
+                 'ans-ko': ev.ko, 'ans-en': ev.en, 'ans-pron': ev.pron });
+  } else if (ev.type === 'answer_error') {
+    btnAsk.disabled = false;
+    btnAsk.textContent = '답변 생성 (스페이스바)';
+    showAnswer({ 'ans-ko': ev.text, 'ans-en': '', 'ans-pron': '' });
+  } else if (ev.type === 'cleared') {
+    subtitles.innerHTML = '';
+    currentBubble = null;
+  }
+}
+
+function connect() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen = () => setStatus('연결됨', 'ok');
+  ws.onclose = () => { setStatus('연결 끊김 — 재연결 중...', 'err'); setTimeout(connect, 1500); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (m) => handleEvent(JSON.parse(m.data));
+}
+connect();
+
+function ask() {
+  if (ws && ws.readyState === WebSocket.OPEN && !btnAsk.disabled) {
+    ws.send(JSON.stringify({ type: 'ask' }));
+  }
+}
+btnAsk.addEventListener('click', ask);
+btnClear.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'clear' }));
+});
+
+const koInput = document.getElementById('ko-input');
+function translateKo() {
+  const text = koInput.value.trim();
+  if (text && ws && ws.readyState === WebSocket.OPEN && !btnAsk.disabled) {
+    ws.send(JSON.stringify({ type: 'translate', text }));
+    koInput.value = '';
+  }
+}
+document.getElementById('btn-translate').addEventListener('click', translateKo);
+koInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); translateKo(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); ask(); }
+});
+</script>
+</body>
+</html>
