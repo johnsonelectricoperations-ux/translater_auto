@@ -1,0 +1,7 @@
+google-genai>=1.20.0
+aiohttp>=3.9
+python-dotenv>=1.0
+numpy>=1.26
+PyAudioWPatch>=0.2.12; sys_platform == "win32"
+truststore>=0.9
+
